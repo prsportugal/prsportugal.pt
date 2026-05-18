@@ -1,3 +1,5 @@
+import { refreshGoogleTranslate } from "./translate.js";
+
 const config = window.PRS_CONFIG || {};
 const locale = config.locale || "pt-PT";
 const RESULTS_PREFIX = "resultados_";
@@ -323,6 +325,7 @@ export async function initAnnualResultsUi() {
     status.textContent = selected.isProvisional
       ? "Classificação provisória (época em progresso)."
       : "Classificação final da época.";
+    refreshGoogleTranslate({ delay: 500 });
   };
 
   picker.addEventListener("change", () => {
