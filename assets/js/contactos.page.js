@@ -1,4 +1,5 @@
 import { loadSharedComponents } from "./components.js";
+import { refreshGoogleTranslate } from "./translate.js";
 
 const config = window.PRS_CONFIG || {};
 
@@ -56,6 +57,7 @@ function initContactForm() {
 async function bootstrap() {
   await loadSharedComponents();
   initContactForm();
+  refreshGoogleTranslate({ delay: 250 });
 }
 
 bootstrap();

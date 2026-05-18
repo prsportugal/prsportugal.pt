@@ -1,4 +1,5 @@
 import { loadSharedComponents } from "./components.js";
+import { refreshGoogleTranslate } from "./translate.js";
 
 const basePath = (document.body?.dataset.base || ".").replace(/\/+$/, "");
 
@@ -235,6 +236,7 @@ async function bootstrap() {
   try {
     const info = await fetchInfo(slug);
     render(info, slug);
+    refreshGoogleTranslate({ delay: 250 });
   } catch (_error) {
     const title = document.getElementById("gallery-title");
     const meta = document.getElementById("gallery-meta");
@@ -244,6 +246,7 @@ async function bootstrap() {
     if (meta) {
       meta.textContent = "Verifica se o Info.json existe e está válido para esta competição.";
     }
+    refreshGoogleTranslate({ delay: 250 });
   }
 }
 

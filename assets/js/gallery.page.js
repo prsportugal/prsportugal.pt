@@ -1,4 +1,5 @@
 import { loadSharedComponents } from "./components.js";
+import { refreshGoogleTranslate } from "./translate.js";
 
 const config = window.PRS_CONFIG || {};
 const basePath = (document.body?.dataset.base || ".").replace(/\/+$/, "");
@@ -163,6 +164,7 @@ async function loadGalleryList() {
 async function bootstrap() {
   await loadSharedComponents();
   await loadGalleryList();
+  refreshGoogleTranslate({ delay: 250 });
 }
 
 bootstrap();
