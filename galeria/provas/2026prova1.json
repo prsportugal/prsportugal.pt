@@ -1,0 +1,17 @@
+{
+  "title": "1ª Prova 2026",
+  "date": "2026-02",
+  "location": "Portugal",
+  "description": "Galeria fotográfica da 1ª prova de 2026",
+  "folder": "2026prova1",
+  "thumbnail": "capaprova1.jpg",
+  "images": [
+    {
+      "url": "capaprova1.jpg"
+    },
+    {
+      "url": "_MTK8520.jpg"
+    }
+    
+  ]
+}
