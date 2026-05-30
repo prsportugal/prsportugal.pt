@@ -236,7 +236,7 @@ function formatPointsCell(valueObj, columnHasPoints) {
   }
 
   if (columnHasPoints) {
-    return '<td class="is-absent">Faltou</td>';
+    return '<td class="is-absent">-</td>';
   }
 
   return "<td></td>";
