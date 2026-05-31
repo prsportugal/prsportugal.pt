@@ -123,10 +123,33 @@ img.js-image-load-fx.is-loaded {
   text-decoration: none;
 }
 
+/* Estilização Geral do Logo */
 .brand-logo {
-  height: 75px;
+  height: 75px; 
   width: auto;
   display: block;
+  object-fit: contain;
+  image-rendering: -webkit-optimize-contrast;
+  transition: transform 0.3s ease;
+}
+
+
+.brand:hover .brand-logo {
+  transform: scale(1.02);
+}
+
+
+:root[data-theme="dark"] .brand-logo {
+  
+  filter: drop-shadow(0 0 1px rgba(255,255,255,0.2));
+}
+
+
+@media (max-width: 860px) {
+  .brand-logo {
+    height: 60px; 
+    margin: 0.5rem 0;
+  }
 }
 
 .nav-toggle {
