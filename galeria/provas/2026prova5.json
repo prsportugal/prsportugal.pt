@@ -1,0 +1,26 @@
+{
+    "title": "5ª Prova 2026",
+    "date": "2026-10-25",
+    "location": "Portugal",
+    "description": "Galeria fotográfica da 5ª prova de 2026",
+    "folder": "2026prova5",
+    "thumbnail": "capaprova5.jpeg",
+    "images": [
+        {
+            "url": "IMG_1759-1.jpg"
+        },
+        
+        {
+            "url": "IMG_1798-1.jpg"
+        },
+        {
+            "url": "IMG_1773-1.jpg"
+        },
+        {
+            "url": "IMG_1783-1.jpg"
+        },
+        {
+            "url": "IMG_1785-1.jpgg"
+        }
+    ]
+}
