@@ -98,6 +98,15 @@ function resolveCountryCode(location) {
   return COUNTRY_CODE_BY_NAME[normalized] || "";
 }
 
+function getCountryFlagEmoji(countryCode) {
+  const code = String(countryCode || "").toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) {
+    return "";
+  }
+
+  return String.fromCodePoint(...Array.from(code, (letter) => 0x1F1A5 + letter.charCodeAt(0)));
+}
+
 function isCompetitionEvent(event) {
   return (event?.type || "competicao") === "competicao";
 }
@@ -144,8 +153,9 @@ function eventRowTemplate(event) {
   const locationText = event.location || "Local por anunciar";
   const safeLocation = escapeHtml(locationText);
   const countryCode = resolveCountryCode(locationText);
+  const countryFlag = getCountryFlagEmoji(countryCode);
   const locationWithFlag = countryCode
-    ? `<span class="event-location-display"><img class="event-country-flag" src="https://flagicons.lipis.dev/flags/4x3/${countryCode}.svg" alt="" aria-hidden="true" loading="lazy" decoding="async" /><span>${safeLocation}</span></span>`
+    ? `<span class="event-location-display"><span class="event-country-flag" aria-hidden="true">${countryFlag}</span><span>${safeLocation}</span></span>`
     : safeLocation;
   const safeRegistrationUrl = event.registrationUrl ? escapeHtml(event.registrationUrl) : "";
 

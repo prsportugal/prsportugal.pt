@@ -5,31 +5,19 @@ const SUPPORTED_LANGUAGES = [DEFAULT_LANGUAGE, ...TRANSLATED_LANGUAGES];
 const GOOGLE_TRANSLATE_ELEMENT_ID = "google_translate_element";
 const GOOGLE_TRANSLATE_SCRIPT_URL =
   "https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit";
-
-const FLAG_BY_LANGUAGE = {
-  pt: "pt",
-  en: "gb",
-  es: "es",
-  fr: "fr",
-  de: "de",
-  it: "it"
-};
+const FLAG_BY_LANGUAGE = { pt: "pt", en: "gb", es: "es", fr: "fr", de: "de", it: "it" };
 
 let scriptPromise = null;
-let comboObserver = null;
 let refreshTimer = null;
-let languageSwitchTimer = null;
 
-function normalizeLanguage(lang) {
-  return SUPPORTED_LANGUAGES.includes(lang) ? lang : DEFAULT_LANGUAGE;
-}
-
-function getFlagCode(language) {
-  return FLAG_BY_LANGUAGE[language] || "pt";
+function normalizeLanguage(language) {
+  return SUPPORTED_LANGUAGES.includes(language) ? language : DEFAULT_LANGUAGE;
 }
 
 function getFlagSvgUrl(language) {
-  return `https://flagicons.lipis.dev/flags/4x3/${getFlagCode(language)}.svg`;
+  const basePath = (document.body?.dataset.base || ".").replace(/\/+$/, "");
+  const flag = FLAG_BY_LANGUAGE[normalizeLanguage(language)] || FLAG_BY_LANGUAGE.pt;
+  return `${basePath}/assets/images/flags/${flag}.svg`;
 }
 
 function readStoredLanguage() {
@@ -40,28 +28,12 @@ function readStoredLanguage() {
   }
 }
 
-function writeStoredLanguage(lang) {
+function writeStoredLanguage(language) {
   try {
-    localStorage.setItem(STORAGE_KEY, normalizeLanguage(lang));
+    localStorage.setItem(STORAGE_KEY, normalizeLanguage(language));
   } catch (_error) {
-    // Storage can be unavailable in private browsing; the Google cookie still carries the preference.
+    // The preference remains available in the Google Translate cookie.
   }
-}
-
-function getCookieDomains() {
-  const host = window.location.hostname;
-  if (!host || host === "localhost" || /^[\d.]+$/.test(host) || host.includes(":")) {
-    return [""];
-  }
-
-  const parts = host.split(".").filter(Boolean);
-  const domains = new Set(["", host]);
-
-  if (parts.length >= 2) {
-    domains.add(`.${parts.slice(-2).join(".")}`);
-  }
-
-  return Array.from(domains);
 }
 
 function getCookiePaths() {
@@ -75,47 +47,72 @@ function getCookiePaths() {
   return Array.from(paths);
 }
 
-function buildCookieSuffix(path, domain = "") {
-  return `path=${path}${domain ? `;domain=${domain}` : ""}`;
+function getLegacyCookieDomains() {
+  const host = window.location.hostname;
+  if (!host || host === "localhost" || /^[\d.]+$/.test(host)) {
+    return [""];
+  }
+
+  const parts = host.split(".").filter(Boolean);
+  const domains = new Set(["", host]);
+  if (parts.length >= 2) {
+    domains.add(`.${parts.slice(-2).join(".")}`);
+  }
+
+  return Array.from(domains);
+}
+
+function cookieSecurityAttributes() {
+  return window.location.protocol === "https:" ? ";SameSite=Lax;Secure" : ";SameSite=Lax";
 }
 
 function clearTranslateCookie() {
+  // Also clears cookie scopes created by previous versions of this integration.
   getCookiePaths().forEach((path) => {
-    getCookieDomains().forEach((domain) => {
-      document.cookie =
-        `googtrans=;expires=Thu, 01 Jan 1970 00:00:00 GMT;Max-Age=0;${buildCookieSuffix(path, domain)}`;
+    getLegacyCookieDomains().forEach((domain) => {
+      const domainAttribute = domain ? `;Domain=${domain}` : "";
+      document.cookie = `googtrans=;Max-Age=0;Path=${path}${domainAttribute}${cookieSecurityAttributes()}`;
     });
   });
 }
 
-function setTranslateCookie(lang) {
-  const normalized = normalizeLanguage(lang);
-
+function setTranslateCookie(language) {
+  const normalized = normalizeLanguage(language);
   clearTranslateCookie();
+
   if (normalized === DEFAULT_LANGUAGE) {
     return;
   }
 
-  const value = `/${DEFAULT_LANGUAGE}/${normalized}`;
-  getCookiePaths().forEach((path) => {
-    getCookieDomains().forEach((domain) => {
-      document.cookie = `googtrans=${value};${buildCookieSuffix(path, domain)}`;
-    });
-  });
+  // Keep one host-scoped cookie. Multiple domain/path variants can make the
+  // Google widget read an older value on nested pages.
+  document.cookie = `googtrans=/${DEFAULT_LANGUAGE}/${normalized};Path=/${cookieSecurityAttributes()}`;
 }
 
-function applyLanguageFlagToPicker(picker, language) {
-  if (!picker) {
+function getPicker() {
+  return document.getElementById("language-switcher");
+}
+
+function getCustomPicker(picker = getPicker()) {
+  return picker?.parentElement?.querySelector(".language-picker") || null;
+}
+
+function setPickerStatus(message = "", isError = false) {
+  const custom = getCustomPicker();
+  if (!custom) {
     return;
   }
 
-  const selectedLanguage = normalizeLanguage(language);
-  picker.style.backgroundImage = `url("${getFlagSvgUrl(selectedLanguage)}")`;
-  updateCustomLanguageSwitcher(picker, selectedLanguage);
+  const status = custom.querySelector(".language-picker-status");
+  custom.classList.toggle("is-error", isError);
+
+  if (status) {
+    status.textContent = message;
+  }
 }
 
 function updateCustomLanguageSwitcher(picker, language) {
-  const custom = picker?.parentElement?.querySelector(".language-picker");
+  const custom = getCustomPicker(picker);
   if (!custom) {
     return;
   }
@@ -126,23 +123,22 @@ function updateCustomLanguageSwitcher(picker, language) {
   const triggerFlag = custom.querySelector(".language-picker-trigger-flag");
   const triggerLabel = custom.querySelector(".language-picker-trigger-label");
 
-  if (trigger) {
-    trigger.setAttribute("data-lang", selectedLanguage);
-  }
-
   if (triggerFlag) {
-    triggerFlag.setAttribute("src", getFlagSvgUrl(selectedLanguage));
-    triggerFlag.setAttribute("alt", "");
+    triggerFlag.src = getFlagSvgUrl(selectedLanguage);
   }
 
   if (triggerLabel) {
     triggerLabel.textContent = selectedOption ? selectedOption.textContent.trim() : selectedLanguage.toUpperCase();
   }
 
+  if (trigger) {
+    trigger.setAttribute("aria-label", `Idioma: ${triggerLabel?.textContent || selectedLanguage.toUpperCase()}`);
+  }
+
   custom.querySelectorAll(".language-picker-option").forEach((option) => {
     const isSelected = option.getAttribute("data-lang") === selectedLanguage;
     option.classList.toggle("is-selected", isSelected);
-    option.setAttribute("aria-selected", isSelected ? "true" : "false");
+    option.setAttribute("aria-current", isSelected ? "true" : "false");
   });
 }
 
@@ -158,16 +154,14 @@ function ensureCustomLanguageSwitcher(picker) {
   const trigger = document.createElement("button");
   trigger.type = "button";
   trigger.className = "language-picker-trigger";
-  trigger.setAttribute("aria-haspopup", "listbox");
+  trigger.setAttribute("aria-haspopup", "true");
   trigger.setAttribute("aria-expanded", "false");
-  trigger.setAttribute("aria-label", "Selecionar idioma");
   trigger.setAttribute("translate", "no");
 
   const triggerFlag = document.createElement("img");
   triggerFlag.className = "language-picker-trigger-flag";
-  triggerFlag.setAttribute("alt", "");
+  triggerFlag.alt = "";
   triggerFlag.setAttribute("aria-hidden", "true");
-  triggerFlag.setAttribute("decoding", "async");
 
   const triggerLabel = document.createElement("span");
   triggerLabel.className = "language-picker-trigger-label";
@@ -177,66 +171,81 @@ function ensureCustomLanguageSwitcher(picker) {
   triggerCaret.className = "language-picker-caret";
   triggerCaret.setAttribute("aria-hidden", "true");
   triggerCaret.textContent = "▾";
-
   trigger.append(triggerFlag, triggerLabel, triggerCaret);
 
   const menu = document.createElement("ul");
+  const menuId = "language-picker-menu";
+  menu.id = menuId;
   menu.className = "language-picker-menu";
-  menu.setAttribute("role", "listbox");
-  menu.setAttribute("aria-label", "Idiomas");
+  menu.setAttribute("aria-label", "Escolher idioma");
   menu.setAttribute("translate", "no");
+  menu.hidden = true;
+  trigger.setAttribute("aria-controls", menuId);
 
   Array.from(picker.options).forEach((nativeOption) => {
     const item = document.createElement("li");
     item.className = "language-picker-item";
-    item.setAttribute("role", "presentation");
 
     const optionButton = document.createElement("button");
     optionButton.type = "button";
     optionButton.className = "language-picker-option";
-    optionButton.setAttribute("role", "option");
-    optionButton.setAttribute("aria-selected", "false");
     optionButton.setAttribute("data-lang", nativeOption.value);
     optionButton.setAttribute("translate", "no");
 
     const optionFlag = document.createElement("img");
     optionFlag.className = "language-picker-option-flag";
-    optionFlag.setAttribute("src", getFlagSvgUrl(nativeOption.value));
-    optionFlag.setAttribute("alt", "");
+    optionFlag.src = getFlagSvgUrl(nativeOption.value);
+    optionFlag.alt = "";
     optionFlag.setAttribute("aria-hidden", "true");
-    optionFlag.setAttribute("loading", "lazy");
-    optionFlag.setAttribute("decoding", "async");
 
     const optionLabel = document.createElement("span");
-    optionLabel.className = "language-picker-option-label";
     optionLabel.textContent = nativeOption.textContent.trim();
-    optionLabel.setAttribute("translate", "no");
-
     optionButton.append(optionFlag, optionLabel);
+
     item.appendChild(optionButton);
     menu.appendChild(item);
   });
 
-  wrapper.append(trigger, menu);
+  const status = document.createElement("span");
+  status.className = "language-picker-status";
+  status.setAttribute("role", "status");
+  status.setAttribute("aria-live", "polite");
+
+  wrapper.append(trigger, menu, status);
   picker.insertAdjacentElement("afterend", wrapper);
   picker.classList.add("language-switcher-native");
   picker.tabIndex = -1;
+  picker.setAttribute("aria-hidden", "true");
 
-  const closeMenu = () => {
+  const optionButtons = () => Array.from(menu.querySelectorAll(".language-picker-option"));
+  const closeMenu = ({ restoreFocus = false } = {}) => {
     wrapper.classList.remove("is-open");
+    menu.hidden = true;
     trigger.setAttribute("aria-expanded", "false");
+    if (restoreFocus) {
+      trigger.focus();
+    }
+  };
+  const openMenu = () => {
+    wrapper.classList.add("is-open");
+    menu.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    const selected = menu.querySelector(".language-picker-option.is-selected");
+    (selected || optionButtons()[0])?.focus();
   };
 
   trigger.addEventListener("click", () => {
-    const isOpen = wrapper.classList.toggle("is-open");
-    trigger.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    if (wrapper.classList.contains("is-open")) {
+      closeMenu();
+    } else {
+      openMenu();
+    }
   });
 
   menu.addEventListener("click", (event) => {
     const target = event.target instanceof Element
       ? event.target.closest(".language-picker-option")
       : null;
-
     if (!target) {
       return;
     }
@@ -246,187 +255,34 @@ function ensureCustomLanguageSwitcher(picker) {
     closeMenu();
   });
 
-  document.addEventListener("click", (event) => {
+  menu.addEventListener("keydown", (event) => {
+    const buttons = optionButtons();
+    const currentIndex = buttons.indexOf(document.activeElement);
+    let nextIndex = -1;
+
+    if (event.key === "ArrowDown") nextIndex = Math.min(currentIndex + 1, buttons.length - 1);
+    if (event.key === "ArrowUp") nextIndex = Math.max(currentIndex - 1, 0);
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = buttons.length - 1;
+
+    if (nextIndex >= 0) {
+      event.preventDefault();
+      buttons[nextIndex]?.focus();
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeMenu({ restoreFocus: true });
+    }
+  });
+
+  document.addEventListener("pointerdown", (event) => {
     if (event.target instanceof Node && !wrapper.contains(event.target)) {
       closeMenu();
     }
   });
 
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      closeMenu();
-    }
-  });
-
   picker.dataset.customized = "true";
-}
-
-function getGoogleCombo() {
-  return document.querySelector(".goog-te-combo");
-}
-
-function hasComboValue(combo, value) {
-  return Array.from(combo.options || []).some((option) => option.value === value);
-}
-
-function dispatchComboChange(combo) {
-  if (typeof combo.onchange === "function") {
-    combo.onchange.call(combo);
-  }
-
-  const event = document.createEvent("HTMLEvents");
-  event.initEvent("change", true, true);
-  combo.dispatchEvent(event);
-}
-
-function getGoogleTranslateInstance() {
-  return window.google?.translate?.TranslateElement?.getInstance?.() || null;
-}
-
-function getGoogleTranslateService() {
-  return getGoogleTranslateInstance()?.F || null;
-}
-
-function restoreGoogleTranslation() {
-  const combo = getGoogleCombo();
-  clearTranslateCookie();
-  applyDocumentLanguage(DEFAULT_LANGUAGE);
-
-  if (combo && hasComboValue(combo, "")) {
-    combo.value = "";
-    dispatchComboChange(combo);
-  }
-
-  const instance = getGoogleTranslateInstance();
-  const service = getGoogleTranslateService();
-
-  if (instance?.l && typeof instance.l.wa === "function") {
-    instance.l.wa("");
-  }
-
-  if (service && typeof service.restore === "function") {
-    window.setTimeout(() => {
-      service.restore(null);
-    }, 0);
-    return true;
-  }
-
-  return Boolean(combo);
-}
-
-function applyGoogleTranslateServiceLanguage(lang) {
-  const normalized = normalizeLanguage(lang);
-  if (normalized === DEFAULT_LANGUAGE) {
-    return restoreGoogleTranslation();
-  }
-
-  const instance = getGoogleTranslateInstance();
-  const service = getGoogleTranslateService();
-  if (!service || typeof service.Ce !== "function") {
-    return false;
-  }
-
-  setTranslateCookie(normalized);
-  applyDocumentLanguage(normalized);
-
-  if (instance) {
-    instance.o = DEFAULT_LANGUAGE;
-    instance.j = normalized;
-
-    if (instance.l && typeof instance.l.wa === "function") {
-      instance.l.wa(normalized);
-    }
-  }
-
-  if (typeof service.Rh === "function") {
-    service.Rh(false);
-  }
-
-  window.setTimeout(() => {
-    service.Ce(DEFAULT_LANGUAGE, normalized, () => { }, undefined, undefined);
-  }, 0);
-
-  const combo = getGoogleCombo();
-  if (combo && hasComboValue(combo, normalized)) {
-    combo.value = normalized;
-  }
-
-  return true;
-}
-
-function ensureGoogleTranslateReady(callback) {
-  if (ensureGoogleWidget()) {
-    waitForGoogleCombo(callback);
-    return;
-  }
-
-  loadGoogleTranslateScript()
-    .then(() => {
-      ensureGoogleWidget();
-      waitForGoogleCombo(callback);
-    })
-    .catch(() => {
-      scriptPromise = null;
-    });
-}
-
-function setGoogleComboLanguage(lang, options = {}) {
-  if (applyGoogleTranslateServiceLanguage(lang)) {
-    return true;
-  }
-
-  const combo = getGoogleCombo();
-  if (!combo) {
-    return false;
-  }
-
-  const normalized = normalizeLanguage(lang);
-  const comboValue = normalized === DEFAULT_LANGUAGE && hasComboValue(combo, "") ? "" : normalized;
-
-  if (!hasComboValue(combo, comboValue)) {
-    return false;
-  }
-
-  if (combo.value === comboValue && !options.reapply) {
-    return true;
-  }
-
-  combo.value = comboValue;
-  dispatchComboChange(combo);
-  return true;
-}
-
-function switchGoogleComboLanguage(lang, previousLang) {
-  const normalized = normalizeLanguage(lang);
-  const previous = normalizeLanguage(previousLang);
-
-  if (normalized === DEFAULT_LANGUAGE) {
-    return restoreGoogleTranslation();
-  }
-
-  const shouldResetFirst =
-    previous !== DEFAULT_LANGUAGE &&
-    previous !== normalized;
-
-  if (!shouldResetFirst) {
-    return setGoogleComboLanguage(normalized, { reapply: true });
-  }
-
-  const combo = getGoogleCombo();
-  if (!combo || !hasComboValue(combo, "")) {
-    return setGoogleComboLanguage(normalized, { reapply: true });
-  }
-
-  window.clearTimeout(languageSwitchTimer);
-  restoreGoogleTranslation();
-
-  languageSwitchTimer = window.setTimeout(() => {
-    setTranslateCookie(normalized);
-    applyDocumentLanguage(normalized);
-    setGoogleComboLanguage(normalized, { reapply: true });
-  }, 180);
-
-  return true;
 }
 
 function ensureGoogleWidget() {
@@ -442,7 +298,7 @@ function ensureGoogleWidget() {
   new window.google.translate.TranslateElement(
     {
       pageLanguage: DEFAULT_LANGUAGE,
-      includedLanguages: SUPPORTED_LANGUAGES.join(","),
+      includedLanguages: TRANSLATED_LANGUAGES.join(","),
       autoDisplay: false,
       layout: window.google.translate.TranslateElement.InlineLayout.SIMPLE
     },
@@ -451,6 +307,35 @@ function ensureGoogleWidget() {
 
   host.dataset.initialized = "true";
   return true;
+}
+
+function hasGoogleTranslationWidget() {
+  return Boolean(document.querySelector("div.skiptranslate"));
+}
+
+function waitForGoogleTranslationWidget(timeout = 750) {
+  if (hasGoogleTranslationWidget()) {
+    return Promise.resolve(true);
+  }
+
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeout;
+    const check = () => {
+      if (hasGoogleTranslationWidget()) {
+        resolve(true);
+        return;
+      }
+
+      if (Date.now() >= deadline) {
+        resolve(false);
+        return;
+      }
+
+      window.setTimeout(check, 50);
+    };
+
+    check();
+  });
 }
 
 function loadGoogleTranslateScript() {
@@ -463,13 +348,10 @@ function loadGoogleTranslateScript() {
   }
 
   scriptPromise = new Promise((resolve, reject) => {
-    const existingScript = document.querySelector(`script[src^="${GOOGLE_TRANSLATE_SCRIPT_URL.split("?")[0]}"]`);
-    if (existingScript) {
-      if (window.google?.translate?.TranslateElement) {
-        resolve();
-        return;
-      }
+    const sourcePrefix = GOOGLE_TRANSLATE_SCRIPT_URL.split("?")[0];
+    const existingScript = document.querySelector(`script[src^="${sourcePrefix}"]`);
 
+    if (existingScript) {
       existingScript.addEventListener("load", resolve, { once: true });
       existingScript.addEventListener("error", reject, { once: true });
       return;
@@ -478,111 +360,96 @@ function loadGoogleTranslateScript() {
     const script = document.createElement("script");
     script.src = GOOGLE_TRANSLATE_SCRIPT_URL;
     script.async = true;
+    script.dataset.prsGoogleTranslate = "true";
     script.addEventListener("load", resolve, { once: true });
-    script.addEventListener("error", reject, { once: true });
+    script.addEventListener("error", () => {
+      script.remove();
+      reject(new Error("Não foi possível carregar o serviço de tradução."));
+    }, { once: true });
     document.body.appendChild(script);
+  }).catch((error) => {
+    scriptPromise = null;
+    throw error;
   });
 
   return scriptPromise;
 }
 
-function waitForGoogleCombo(callback) {
-  if (getGoogleCombo()) {
-    callback();
+async function activateStoredLanguage() {
+  const language = readStoredLanguage();
+  setPickerStatus();
+
+  if (language === DEFAULT_LANGUAGE) {
+    setTranslateCookie(language);
+    document.documentElement.lang = "pt-PT";
     return;
   }
 
-  comboObserver?.disconnect();
-  comboObserver = new MutationObserver(() => {
-    if (!getGoogleCombo()) {
+  setTranslateCookie(language);
+
+  try {
+    await loadGoogleTranslateScript();
+    if (!ensureGoogleWidget()) {
+      throw new Error("Não foi possível iniciar o serviço de tradução.");
+    }
+
+    // The current Google widget reads googtrans during initialization. It no
+    // longer exposes the old .goog-te-combo select, so no private widget API
+    // or brittle DOM command is needed here.
+    document.documentElement.lang = language;
+  } catch (_error) {
+    if (await waitForGoogleTranslationWidget()) {
+      document.documentElement.lang = language;
       return;
     }
 
-    comboObserver?.disconnect();
-    comboObserver = null;
-    callback();
-  });
-
-  comboObserver.observe(document.documentElement, {
-    childList: true,
-    subtree: true
-  });
-
-  window.setTimeout(() => {
-    comboObserver?.disconnect();
-    comboObserver = null;
-  }, 15000);
-}
-
-function applyDocumentLanguage(lang) {
-  document.documentElement.lang = normalizeLanguage(lang) === DEFAULT_LANGUAGE ? "pt-PT" : normalizeLanguage(lang);
-}
-
-function applyLanguage(lang, options = {}) {
-  const normalized = normalizeLanguage(lang);
-  setTranslateCookie(normalized);
-  applyDocumentLanguage(normalized);
-
-  if (setGoogleComboLanguage(normalized, options)) {
-    return true;
+    document.documentElement.lang = "pt-PT";
+    setPickerStatus("Não foi possível carregar a tradução. Tenta novamente.", true);
   }
-
-  ensureGoogleTranslateReady(() => {
-    setGoogleComboLanguage(normalized, options);
-  });
-  return false;
 }
 
 function bindLanguageSwitcher() {
-  const picker = document.getElementById("language-switcher");
+  const picker = getPicker();
   if (!picker) {
     return;
   }
 
   ensureCustomLanguageSwitcher(picker);
 
-  if (picker.dataset.bound !== "true") {
-    picker.addEventListener("change", () => {
-      const previousLang = readStoredLanguage();
-      const nextLang = normalizeLanguage(picker.value);
-      picker.value = nextLang;
-      writeStoredLanguage(nextLang);
-      applyLanguageFlagToPicker(picker, nextLang);
-      setTranslateCookie(nextLang);
-      applyDocumentLanguage(nextLang);
-
-      if (switchGoogleComboLanguage(nextLang, previousLang)) {
-        return;
-      }
-
-      ensureGoogleTranslateReady(() => {
-        switchGoogleComboLanguage(nextLang, previousLang);
-      });
-    });
-
-    picker.dataset.bound = "true";
-  }
-
   const selectedLanguage = readStoredLanguage();
   picker.value = selectedLanguage;
-  applyLanguageFlagToPicker(picker, selectedLanguage);
+  updateCustomLanguageSwitcher(picker, selectedLanguage);
+
+  if (picker.dataset.bound === "true") {
+    return;
+  }
+
+  picker.addEventListener("change", () => {
+    const nextLanguage = normalizeLanguage(picker.value);
+    picker.value = nextLanguage;
+    writeStoredLanguage(nextLanguage);
+    updateCustomLanguageSwitcher(picker, nextLanguage);
+    setTranslateCookie(nextLanguage);
+    document.documentElement.classList.add("is-language-switching");
+
+    // The current Google widget applies the language preference while it is
+    // initializing. A short visual transition keeps the switch deliberate
+    // without relying on undocumented Google internals.
+    window.setTimeout(() => window.location.reload(), 120);
+  });
+
+  picker.dataset.bound = "true";
 }
 
 export function refreshGoogleTranslate(options = {}) {
   window.clearTimeout(refreshTimer);
   refreshTimer = window.setTimeout(() => {
-    const language = readStoredLanguage();
-    if (language === DEFAULT_LANGUAGE) {
-      return;
-    }
-
-    applyLanguage(language, { reapply: true });
+    activateStoredLanguage();
   }, options.delay ?? 250);
 }
 
 export function initGoogleTranslate() {
   bindLanguageSwitcher();
-  applyDocumentLanguage(readStoredLanguage());
 
   window.googleTranslateElementInit = function googleTranslateElementInit() {
     ensureGoogleWidget();
